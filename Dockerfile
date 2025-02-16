@@ -36,14 +36,10 @@ RUN mkdir -p \
     && : `# the timezone data:` \
     && cp -Rt /rootfs/usr/share /usr/share/zoneinfo \
     && : `# the tls certificates:` \
-    && cp -t /rootfs/etc/ssl/certs /etc/ssl/certs/ca-certificates.crt \
-    && cp -t /rootfs/usr/bin /sbin/nologin \
-    && echo 'root:x:0:0:root:/root:/app/server' > /etc/passwd
+    && cp -t /rootfs/etc/ssl/certs /etc/ssl/certs/ca-certificates.crt
 
 # final stage
-FROM scratch
-
-ENV PATH=/usr/bin:/app
+FROM gcr.io/distroless/base-debian12:debug
 
 COPY --from=build-env /rootfs /
 
