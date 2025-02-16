@@ -27,7 +27,7 @@ RUN make build
 RUN go install github.com/awslabs/amazon-ecr-credential-helper/ecr-login/cli/docker-credential-ecr-login@latest
 
 RUN mkdir -p \
-        /rootfs/app \
+        /rootfs/app/.docker \
         /rootfs/usr/bin \
         /rootfs/usr/share \
         /rootfs/etc/ssl/certs \
@@ -36,7 +36,9 @@ RUN mkdir -p \
     && : `# the timezone data:` \
     && cp -Rt /rootfs/usr/share /usr/share/zoneinfo \
     && : `# the tls certificates:` \
-    && cp -t /rootfs/etc/ssl/certs /etc/ssl/certs/ca-certificates.crt
+    && cp -t /rootfs/etc/ssl/certs /etc/ssl/certs/ca-certificates.crt \
+    && cp -t /rootfs/usr/bin /sbin/nologin \
+    && echo 'nobody:x:65534:65534:nobody:/app:/usr/bin/nologin' > /etc/passwd
 
 # final stage
 FROM scratch
@@ -44,5 +46,9 @@ FROM scratch
 ENV PATH=/usr/bin:/app
 
 COPY --from=build-env /rootfs /
+
+USER nobody
+
+EXPOSE 8080
 
 ENTRYPOINT ["/app/server"]
