@@ -7,6 +7,7 @@ RUN apk add --no-cache \
     libc-dev \
     tzdata \
     zip \
+    docker-credential-ecr-login \
     ca-certificates
 
 ENV GO111MODULE=on \
@@ -23,11 +24,15 @@ ADD . .
 
 RUN make build
 
+RUN go install github.com/awslabs/amazon-ecr-credential-helper/ecr-login/cli/docker-credential-ecr-login@latest
+
 RUN mkdir -p \
         /rootfs/app \
+        /rootfs/usr/bin \
         /rootfs/usr/share \
         /rootfs/etc/ssl/certs \
     && cp -t /rootfs/app /src/bin/server \
+    && cp -t /rootfs/usr/bin /go/bin/docker-credential-ecr-login \
     && : `# the timezone data:` \
     && cp -Rt /rootfs/usr/share /usr/share/zoneinfo \
     && : `# the tls certificates:` \
@@ -35,6 +40,9 @@ RUN mkdir -p \
 
 # final stage
 FROM scratch
+
+ENV PATH=/usr/bin:/app
+
 COPY --from=build-env /rootfs /
 
 ENTRYPOINT ["/app/server"]
