@@ -5,11 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	log "github.com/sirupsen/logrus"
-	"io"
 	"net/http"
 	"os"
 	"slices"
@@ -111,17 +109,8 @@ func (u *updateHandler) Update(ctx context.Context, req *updateRequest) error {
 		return err
 	}
 
-	// check if new image exists, if not, pull it
-	_, _, err = u.cli.ImageInspectWithRaw(ctx, req.Image)
-	if err != nil {
-		log.Printf("Pulling image %s", req.Image)
-		out, err := cli.ImagePull(ctx, req.Image, image.PullOptions{})
-		if err != nil {
-			return err
-		}
-
-		defer out.Close()
-		_, _ = io.Copy(os.Stdout, out)
+	if err = u.PullImage(ctx, req.Image); err != nil {
+		return err
 	}
 
 	oldContainerConfigJSON, _ := json.Marshal(oldContainer.Config)

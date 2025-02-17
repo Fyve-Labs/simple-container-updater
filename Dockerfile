@@ -7,7 +7,6 @@ RUN apk add --no-cache \
     libc-dev \
     tzdata \
     zip \
-    docker-credential-ecr-login \
     ca-certificates
 
 ENV GO111MODULE=on \
@@ -32,11 +31,11 @@ RUN mkdir -p \
         /rootfs/usr/share \
         /rootfs/etc/ssl/certs \
     && cp -t /rootfs/app /src/bin/server \
-    && cp -t /rootfs/usr/bin /go/bin/docker-credential-ecr-login \
     && : `# the timezone data:` \
     && cp -Rt /rootfs/usr/share /usr/share/zoneinfo \
     && : `# the tls certificates:` \
-    && cp -t /rootfs/etc/ssl/certs /etc/ssl/certs/ca-certificates.crt
+    && cp -t /rootfs/etc/ssl/certs /etc/ssl/certs/ca-certificates.crt \
+    && cp -t /rootfs/usr/bin /go/bin/docker-credential-ecr-login
 
 # final stage
 FROM gcr.io/distroless/base-debian12:debug
