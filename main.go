@@ -7,8 +7,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "github.com/sirupsen/logrus"
 	"io"
 	"net/http"
@@ -19,10 +17,19 @@ import (
 )
 
 func main() {
+	logLevel := os.Getenv("LOG_LEVEL")
 	secretKey := os.Getenv("SECRET_KEY")
 	timeoutInSeconds := 300
 
-	ll, _ := log.ParseLevel("DEBUG")
+	if logLevel == "" {
+		logLevel = "DEBUG"
+	}
+
+	ll, err := log.ParseLevel(logLevel)
+	if err != nil {
+		log.Fatal("invalid log level")
+	}
+
 	log.SetLevel(ll)
 
 	if secretKey == "" {
@@ -38,16 +45,10 @@ func main() {
 		}
 	}
 
-	reg := prometheus.NewRegistry()
-	reg.MustRegister(newUpdateCollector())
-
 	router := http.NewServeMux()
 	router.Handle("/update", UpdateHandler(&updateConfig{
 		secretKey:        secretKey,
 		timeoutInSeconds: timeoutInSeconds,
-	}))
-	router.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{
-		Registry: reg,
 	}))
 
 	serverPort := 8080
