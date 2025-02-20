@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"crypto/rand"
-	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -17,32 +16,26 @@ import (
 )
 
 func main() {
-	logLevel := os.Getenv("LOG_LEVEL")
-	secretKey := os.Getenv("SECRET_KEY")
+	logLevel := Getenv("LOG_LEVEL", "DEBUG")
 	timeoutInSeconds := 300
-
-	if logLevel == "" {
-		logLevel = "DEBUG"
-	}
+	requestTimeout := Getenv("REQUEST_TIMEOUT_SECONDS", fmt.Sprintf("%d", timeoutInSeconds))
+	secretKey := os.Getenv("SECRET_KEY")
 
 	ll, err := log.ParseLevel(logLevel)
 	if err != nil {
 		log.Fatal("invalid log level")
 	}
-
 	log.SetLevel(ll)
+
+	if timeoutInt, err := strconv.Atoi(requestTimeout); err == nil {
+		timeoutInSeconds = timeoutInt
+	}
 
 	if secretKey == "" {
 		bytes := make([]byte, 16)
 		_, _ = io.ReadFull(rand.Reader, bytes)
 		secretKey = hex.EncodeToString(bytes[:])
 		log.Infof("Temporarily generated sk: %s", secretKey)
-	}
-
-	if timeoutStr, isSet := os.LookupEnv("REQUEST_TIMEOUT_SECONDS"); isSet {
-		if timeoutInt, err := strconv.Atoi(timeoutStr); err == nil {
-			timeoutInSeconds = timeoutInt
-		}
 	}
 
 	router := http.NewServeMux()
@@ -92,10 +85,10 @@ func main() {
 	log.Info("Server stopped")
 }
 
-func randString(size int) (string, error) {
-	b := make([]byte, size)
-	if _, err := io.ReadFull(rand.Reader, b); err != nil {
-		return "", err
+func Getenv(name, defaultValue string) string {
+	if value := os.Getenv(name); value != "" {
+		return value
 	}
-	return base64.RawURLEncoding.EncodeToString(b), nil
+
+	return defaultValue
 }
