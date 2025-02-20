@@ -83,7 +83,7 @@ func UpdateHandler(config *updateConfig) http.Handler {
 			return
 		}
 
-		log.Infof("Updated \"%s\" to new image \"%s\"", req.Name, req.Image)
+		log.Infof("Updated %s to image %s", req.Name, req.Image)
 
 		bs, _ := json.Marshal(&updateResponse{true})
 		w.Header().Set("Content-Type", "application/json")
