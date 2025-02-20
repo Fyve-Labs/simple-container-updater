@@ -38,10 +38,9 @@ RUN mkdir -p \
     && cp -t /rootfs/usr/bin /go/bin/docker-credential-ecr-login
 
 # final stage
-FROM gcr.io/distroless/base-debian12:debug
-
+FROM scratch
+ENV PATH=/usr/bin:/app
 COPY --from=build-env /rootfs /
-
 EXPOSE 8080
 
 ENTRYPOINT ["/app/server"]

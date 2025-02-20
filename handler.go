@@ -2,13 +2,15 @@ package main
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"github.com/docker/docker/client"
 	log "github.com/sirupsen/logrus"
 	"net/http"
-	"os"
-	"slices"
+	"strings"
 	"time"
 )
 
@@ -21,70 +23,67 @@ type updateResponse struct {
 	Ok bool `json:"OK"`
 }
 
-type updateHandler struct {
-	cli                *client.Client
-	containerAllowList []string
+type updateConfig struct {
+	secretKey        string
+	timeoutInSeconds int
+	containerNames   []string
+	updater          UpdaterInterface
 }
 
-func newUpdateHandler() *updateHandler {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
-	if err != nil {
-		log.Fatalf("can't create docker client: %v", err)
+func ConstructJsonRequest[T interface{}](r *http.Request, secretKey string) (*T, error) {
+	if r.Method != "POST" {
+		return nil, errors.New("only POST requests allowed")
 	}
 
-	var containerAllowList []string
-	if listStr, isSet := os.LookupEnv("CONTAINER_ALLOW_LIST"); isSet {
-		err := json.Unmarshal([]byte(listStr), &containerAllowList)
-		if err != nil {
-			log.Error("Malformed CONTAINER_ALLOW_LIST")
-		}
+	if c := r.Header.Get("Content-Type"); c != "application/json" {
+		return nil, errors.New("request body must be json")
 	}
 
-	log.Debugf("CONTAINER_ALLOW_LIST: %v", containerAllowList)
-
-	return &updateHandler{
-		cli:                cli,
-		containerAllowList: containerAllowList,
+	signature := r.Header.Get("X-Signature")
+	if signature == "" {
+		return nil, errors.New("missing signature")
 	}
+
+	var req T
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return nil, errors.New("decode error")
+	}
+
+	payload, _ := json.Marshal(req)
+	h := hmac.New(sha256.New, []byte(secretKey))
+	h.Write(payload)
+	calculatedHMACBytes := h.Sum(nil)
+	calculatedHMAC := hex.EncodeToString(calculatedHMACBytes)
+	if calculatedHMAC != signature {
+		return nil, errors.New("signature mismatched")
+	}
+
+	return &req, nil
 }
 
-func (u *updateHandler) Handler(secretKey string, timeoutInSeconds int) http.Handler {
-	timeout := time.Second * time.Duration(timeoutInSeconds)
+func UpdateHandler(config *updateConfig) http.Handler {
+	timeout := time.Second * time.Duration(config.timeoutInSeconds)
+	updater := newUpdateHandler()
 
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		signature := r.Header.Get("X-Signature")
-		if signature == "" || signature != secretKey {
-			http.Error(w, "", http.StatusUnauthorized)
+		req, err := ConstructJsonRequest[updateRequest](r, config.secretKey)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		if r.Method != "POST" {
-			http.Error(w, "Only POST requests allowed", http.StatusBadRequest)
-			return
-		}
-
-		if c := r.Header.Get("Content-Type"); c != "application/json" {
-			http.Error(w, "Request body must be json", http.StatusBadRequest)
-			return
-		}
-
-		var req updateRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "Bad request", http.StatusBadRequest)
-			return
-		}
-
-		if len(u.containerAllowList) > 0 && !slices.Contains(u.containerAllowList, req.Name) {
-			log.Warnf("Container is not in allow list: %s", req.Name)
-			http.Error(w, "Container is not in allow list", http.StatusBadRequest)
-			return
-		}
-
-		if err := u.Update(context.Background(), &req); err != nil {
+		if err := updater.Update(context.Background(), req.Name, req.Image); err != nil {
 			log.Errorf("update image: %v", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			statusCode := http.StatusInternalServerError
+			if strings.Contains(err.Error(), "not in allow list") {
+				statusCode = http.StatusBadRequest
+			}
+
+			http.Error(w, "Internal server error", statusCode)
 			return
 		}
+
+		log.Infof("Updated \"%s\" to new image \"%s\"", req.Name, req.Image)
 
 		bs, _ := json.Marshal(&updateResponse{true})
 		w.Header().Set("Content-Type", "application/json")

@@ -38,12 +38,14 @@ func main() {
 		}
 	}
 
-	up := newUpdateHandler()
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(newUpdateCollector())
 
 	router := http.NewServeMux()
-	router.Handle("/update", up.Handler(secretKey, timeoutInSeconds))
+	router.Handle("/update", UpdateHandler(&updateConfig{
+		secretKey:        secretKey,
+		timeoutInSeconds: timeoutInSeconds,
+	}))
 	router.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{
 		Registry: reg,
 	}))
